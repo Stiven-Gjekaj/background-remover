@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Background Remover — In-Browser</title>
+    <meta name="description" content="Remove backgrounds from portrait photos in your browser. No uploads." />
+    <style>
+      :root { --bg:#0b0f14; --card:#121923; --muted:#6b7a90; --accent:#4ade80; --danger:#ef4444; --border:#1f2a37; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body { margin: 0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; color: #e5edf5; background: radial-gradient(1200px 600px at 10% -10%, #0e1723, #0b0f14 55%); }
+      header { position: sticky; top: 0; background: rgba(11,15,20,0.65); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); z-index: 10; }
+      .container { max-width: 1000px; margin: 0 auto; padding: 16px; }
+      .bar { display:flex; align-items:center; justify-content:space-between; gap: 12px; }
+      .title { font-weight: 700; letter-spacing: 0.3px; font-size: 18px; }
+      .sub { color: var(--muted); font-size: 13px; }
+      main .grid { display:grid; grid-template-columns: 1fr; gap: 16px; }
+      @media (min-width: 900px) { main .grid { grid-template-columns: 360px 1fr; align-items:start; } }
+      .card { background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.00)); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+      .section-title { margin: 0 0 8px; font-size: 14px; color: #b8c5d6; letter-spacing: 0.4px; text-transform: uppercase; }
+      .dropzone { border: 1px dashed #2a3a4d; background: #0c131c; border-radius: 12px; padding: 18px; text-align:center; color: var(--muted); cursor: pointer; }
+      .dropzone.drag { border-color: var(--accent); color: #c4f2d4; background: #0e1a14; }
+      .thumb { width:100%; border-radius: 10px; overflow:hidden; background:#0b0f14; border:1px solid #1b2735; display:flex; align-items:center; justify-content:center; aspect-ratio: 1 / 1; }
+      .thumb img { max-width:100%; max-height:100%; }
+      .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+      .col { display:flex; flex-direction:column; gap:8px; }
+      .btn { appearance: none; border: 1px solid var(--border); background: #0f1621; color: #e5edf5; border-radius: 10px; padding: 10px 12px; cursor: pointer; font-weight: 600; }
+      .btn.primary { background: linear-gradient(180deg, #1e844a, #1a6e3e); border-color: #165f35; }
+      .btn.ghost { background: #0b0f14; }
+      .btn:disabled { opacity:0.5; cursor: not-allowed; }
+      label.small { font-size: 12px; color: var(--muted); }
+      input[type="range"] { width: 180px; }
+      canvas { width:100%; height:auto; image-rendering: optimizeQuality; border-radius:10px; border:1px solid #1b2735; background:#0a0f15; }
+      .help { font-size: 12px; color: var(--muted); }
+      .pill { font-size: 12px; padding: 4px 8px; background:#0d1520; border:1px solid #1b2735; border-radius:999px; color:#c7d5e8; }
+      footer { color: var(--muted); font-size: 12px; padding: 12px 0 24px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+      a { color: #9bd7ff; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+
+      /* Mobile specific UI */
+      #mobilePanel { display:none; position:sticky; bottom:0; z-index:5; }
+      .mobile-card { background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.00)); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+      .mobile-actions .btn { flex:1 1 auto; padding: 12px; font-size: 14px; }
+      .mobile-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+      .mobile-row input[type="range"] { flex: 1 1 140px; }
+      @media (max-width: 720px) {
+        #desktopLeft, #desktopRight { display:none; }
+        #mobilePanel { display:block; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="container bar">
+        <div>
+          <div class="title">Background Remover</div>
+          <div class="sub">Runs entirely in your browser. Best for people photos.</div>
+        </div>
+        <div class="row">
+          <span id="status" class="pill">Ready</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <div class="grid">
+        <div id="desktopLeft" class="card col" aria-label="Controls">
+          <div class="col">
+            <div class="section-title">1. Upload</div>
+            <label class="dropzone" id="dropzone">
+              <input id="fileInput" type="file" accept="image/*" hidden />
+              <div id="dropText">Drop an image here, or click to browse.</div>
+            </label>
+            <div class="thumb"><img id="preview" alt="preview" /></div>
+          </div>
+
+          <div class="col">
+            <div class="section-title">2. Options</div>
+            <div class="row">
+              <button id="runBtn" class="btn primary" disabled>Remove Background</button>
+              <button id="downloadBtn" class="btn" disabled>Download PNG</button>
+              <button id="clearBtn" class="btn ghost" disabled>Clear</button>
+            </div>
+            <div class="row">
+              <label class="small">Feather: <span id="featherVal">3</span> px</label>
+              <input id="feather" type="range" min="0" max="12" value="3" />
+            </div>
+            <div class="row">
+              <label class="small">Background:</label>
+              <button id="bgTransparent" class="btn ghost">Transparent</button>
+              <button id="bgSolid" class="btn ghost">Solid</button>
+              <input id="bgColor" type="color" value="#111827" />
+            </div>
+            <div class="help">Note: This model segments people. For products/objects, quality may vary.</div>
+          </div>
+        </div>
+
+        <div id="desktopRight" class="card col" aria-label="Result">
+          <div class="section-title">Result</div>
+          <canvas id="canvas" aria-label="Output canvas"></canvas>
+        </div>
+      </div>
+
+      <!-- Mobile quick interface -->
+      <div id="mobilePanel" class="mobile-card" aria-label="Mobile Controls">
+        <div class="mobile-row" style="justify-content:space-between;">
+          <div class="section-title" style="margin:0;">Quick Actions</div>
+          <span class="pill" id="mState">Idle</span>
+        </div>
+        <div class="mobile-row mobile-actions">
+          <button id="mUploadBtn" class="btn">Upload</button>
+          <button id="mRunBtn" class="btn primary" disabled>Remove</button>
+          <button id="mDownloadBtn" class="btn" disabled>Download</button>
+          <button id="mClearBtn" class="btn ghost" disabled>Clear</button>
+        </div>
+        <div class="mobile-row">
+          <label class="small">Feather: <span id="mFeatherVal">3</span> px</label>
+          <input id="mFeather" type="range" min="0" max="12" value="3" />
+        </div>
+        <div class="mobile-row">
+          <label class="small">Background:</label>
+          <button id="mBgTransparent" class="btn ghost">Transparent</button>
+          <button id="mBgSolid" class="btn ghost">Solid</button>
+          <input id="mBgColor" type="color" value="#111827" />
+        </div>
+      </div>
+
+      <footer>
+        <span>Built with MediaPipe Selfie Segmentation. No server, no tracking.</span>
+        <a class="pill" href="https://stiven-gjekaj.github.io/portfolio/" target="_blank" rel="noopener">Portfolio</a>
+        <span id="signature">— Stiven Gjekaj</span>
+      </footer>
+    </main>
+
+    <!-- MediaPipe Selfie Segmentation via CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js"></script>
+
+    <script>
+      const fileInput = document.getElementById('fileInput');
+      const dropzone = document.getElementById('dropzone');
+      const dropText = document.getElementById('dropText');
+      const preview = document.getElementById('preview');
+      const canvas = document.getElementById('canvas');
+      const ctx = canvas.getContext('2d');
+      const runBtn = document.getElementById('runBtn');
+      const downloadBtn = document.getElementById('downloadBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const feather = document.getElementById('feather');
+      const featherVal = document.getElementById('featherVal');
+      const bgTransparent = document.getElementById('bgTransparent');
+      const bgSolid = document.getElementById('bgSolid');
+      const bgColor = document.getElementById('bgColor');
+      const statusEl = document.getElementById('status');
+
+      // Mobile controls
+      const mUploadBtn = document.getElementById('mUploadBtn');
+      const mRunBtn = document.getElementById('mRunBtn');
+      const mDownloadBtn = document.getElementById('mDownloadBtn');
+      const mClearBtn = document.getElementById('mClearBtn');
+      const mFeather = document.getElementById('mFeather');
+      const mFeatherVal = document.getElementById('mFeatherVal');
+      const mBgTransparent = document.getElementById('mBgTransparent');
+      const mBgSolid = document.getElementById('mBgSolid');
+      const mBgColor = document.getElementById('mBgColor');
+      const mState = document.getElementById('mState');
+      const signatureEl = document.getElementById('signature');
+
+      let originalImage = null; // HTMLImageElement
+      let lastResultImageBitmap = null;
+      let currentBgMode = 'transparent'; // 'transparent' | 'solid'
+
+      function setStatus(text) { statusEl.textContent = text; mState.textContent = text; }
+      function enableActions(hasImage, hasResult) {
+        runBtn.disabled = !hasImage;
+        clearBtn.disabled = !hasImage;
+        downloadBtn.disabled = !hasResult;
+        // Mirror to mobile
+        mRunBtn.disabled = !hasImage;
+        mClearBtn.disabled = !hasImage;
+        mDownloadBtn.disabled = !hasResult;
+      }
+
+      // File handling
+      dropzone.addEventListener('click', () => fileInput.click());
+      dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('drag'); dropText.textContent = 'Drop to upload'; });
+      dropzone.addEventListener('dragleave', () => { dropzone.classList.remove('drag'); dropText.textContent = 'Drop an image here, or click to browse.'; });
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault(); dropzone.classList.remove('drag'); handleFiles(e.dataTransfer.files);
+      });
+      fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+      function handleFiles(files) {
+        const f = files && files[0];
+        if (!f) return;
+        if (!f.type.startsWith('image/')) { alert('Please choose an image file.'); return; }
+        const url = URL.createObjectURL(f);
+        const img = new Image();
+        img.onload = () => {
+          originalImage = img;
+          preview.src = url;
+          canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+          // Draw original on canvas initially
+          ctx.clearRect(0,0,canvas.width,canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          setStatus('Image loaded');
+          enableActions(true, false);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); alert('Failed to load image.'); };
+        img.src = url;
+      }
+
+      feather.addEventListener('input', () => { featherVal.textContent = feather.value; mFeather.value = feather.value; mFeatherVal.textContent = feather.value; if (lastResultImageBitmap) redrawWithBg(); });
+      bgTransparent.addEventListener('click', () => { currentBgMode = 'transparent'; redrawWithBg(); });
+      bgSolid.addEventListener('click', () => { currentBgMode = 'solid'; redrawWithBg(); });
+      bgColor.addEventListener('input', () => { mBgColor.value = bgColor.value; if (lastResultImageBitmap) redrawWithBg(); });
+      clearBtn.addEventListener('click', () => { originalImage = null; lastResultImageBitmap = null; preview.removeAttribute('src'); ctx.clearRect(0,0,canvas.width,canvas.height); enableActions(false, false); setStatus('Ready'); });
+
+      // Mobile wiring
+      mUploadBtn.addEventListener('click', () => fileInput.click());
+      mRunBtn.addEventListener('click', () => runBtn.click());
+      mDownloadBtn.addEventListener('click', () => downloadBtn.click());
+      mClearBtn.addEventListener('click', () => clearBtn.click());
+      mFeather.addEventListener('input', () => { feather.value = mFeather.value; mFeatherVal.textContent = mFeather.value; featherVal.textContent = mFeather.value; if (lastResultImageBitmap) redrawWithBg(); });
+      mBgTransparent.addEventListener('click', () => { currentBgMode = 'transparent'; redrawWithBg(); });
+      mBgSolid.addEventListener('click', () => { currentBgMode = 'solid'; redrawWithBg(); });
+      mBgColor.addEventListener('input', () => { bgColor.value = mBgColor.value; if (lastResultImageBitmap) redrawWithBg(); });
+
+      // MediaPipe Selfie Segmentation setup
+      const selfieSegmentation = new SelfieSegmentation({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`
+      });
+      selfieSegmentation.setOptions({ modelSelection: 1 }); // 0=landscape, 1=general
+      let processing = false;
+
+      runBtn.addEventListener('click', async () => {
+        if (!originalImage || processing) return;
+        processing = true; setStatus('Downloading model…');
+        try {
+          // First call will fetch model files; subsequent calls are fast
+          setStatus('Segmenting…');
+          const results = await new Promise(async (resolve, reject) => {
+            try {
+              selfieSegmentation.onResults(resolve);
+              await selfieSegmentation.send({ image: originalImage });
+            } catch (e) { reject(e); }
+          });
+          // Compose: keep person, remove background
+          const w = originalImage.naturalWidth; const h = originalImage.naturalHeight;
+          canvas.width = w; canvas.height = h;
+
+          // Start with a clear canvas (fully transparent)
+          ctx.clearRect(0,0,w,h);
+
+          // Draw soft mask with optional blur (feather)
+          const blur = Number(feather.value) || 0;
+          ctx.save();
+          if (blur > 0) ctx.filter = `blur(${blur}px)`;
+          ctx.drawImage(results.segmentationMask, 0, 0, w, h);
+          ctx.restore();
+
+          // Keep only where the mask is present
+          ctx.globalCompositeOperation = 'source-in';
+          ctx.drawImage(originalImage, 0, 0, w, h);
+          ctx.globalCompositeOperation = 'source-over';
+
+          // Cache subject-only bitmap for faster background redraws
+          if (lastResultImageBitmap) { try { lastResultImageBitmap.close(); } catch (_) {} }
+          lastResultImageBitmap = await createImageBitmap(canvas);
+          // Now render with selected background
+          redrawWithBg();
+          enableActions(true, true);
+          setStatus('Done');
+        } catch (err) {
+          console.error(err);
+          alert('Segmentation failed. Try a clear portrait photo.');
+          setStatus('Error');
+        } finally {
+          processing = false;
+        }
+      });
+
+      function redrawWithBg() {
+        if (!lastResultImageBitmap) return;
+        const w = canvas.width, h = canvas.height;
+        // Draw background first
+        ctx.clearRect(0,0,w,h);
+        if (currentBgMode === 'solid') {
+          ctx.fillStyle = bgColor.value;
+          ctx.fillRect(0,0,w,h);
+        }
+        // Then draw the subject (which has transparency) over it
+        ctx.drawImage(lastResultImageBitmap, 0, 0, w, h);
+      }
+
+      downloadBtn.addEventListener('click', () => {
+        if (!canvas.width) return;
+        const link = document.createElement('a');
+        link.download = 'background-removed.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+      });
+
+      // Keyboard paste support (optional)
+      window.addEventListener('paste', async (e) => {
+        const items = e.clipboardData?.items || [];
+        for (const it of items) {
+          if (it.type.startsWith('image/')) {
+            const f = it.getAsFile();
+            handleFiles([f]);
+            break;
+          }
+        }
+      });
+
+      // Signature (customizable via ?sig=Your+Name)
+      (function initSignature(){
+        const params = new URLSearchParams(location.search);
+        const sig = params.get('sig');
+        if (sig) localStorage.setItem('br_signature', sig);
+        const val = localStorage.getItem('br_signature') || signatureEl.textContent;
+        signatureEl.textContent = `— ${val.replace(/^—\s*/,'')}`;
+      })();
+
+      // Mobile detection and UI tuning
+      (function initMobile(){
+        const isMobile = () => (navigator.maxTouchPoints > 1) || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (window.innerWidth <= 720);
+        const apply = () => {
+          document.body.toggleAttribute('data-mobile', isMobile());
+        };
+        apply();
+        window.addEventListener('resize', () => { apply(); });
+      })();
+    </script>
+  </body>
+  </html>
