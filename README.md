@@ -1,6 +1,6 @@
 # Background Remover
 
-An in‑browser background removal tool that runs entirely on the client using MediaPipe Selfie Segmentation. No uploads or servers required — works great on GitHub Pages.
+An in‑browser background removal tool that runs entirely on the client using MediaPipe Selfie Segmentation. No uploads or servers required.
 
 ## Features
 
